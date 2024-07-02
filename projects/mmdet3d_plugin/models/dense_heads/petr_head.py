@@ -299,6 +299,7 @@ class PETRHead(AnchorFreeHead):
         D = coords_d.shape[0]
         coords = torch.stack(torch.meshgrid([coords_w, coords_h, coords_d])).permute(1, 2, 3, 0) # W, H, D, 3
         coords = torch.cat((coords, torch.ones_like(coords[..., :1])), -1)
+        # get camera frustum space: 
         coords[..., :2] = coords[..., :2] * torch.maximum(coords[..., 2:3], torch.ones_like(coords[..., 2:3])*eps)
 
         img2lidars = []
@@ -308,10 +309,11 @@ class PETRHead(AnchorFreeHead):
                 img2lidar.append(np.linalg.inv(img_meta['lidar2img'][i]))
             img2lidars.append(np.asarray(img2lidar))
         img2lidars = np.asarray(img2lidars)
-        img2lidars = coords.new_tensor(img2lidars) # (B, N, 4, 4)
+        img2lidars = coords.new_tensor(img2lidars) # (B, N, 4, 4) -> 4x4 transformation matrix for every camera (from img coordinates to 3D space)
 
         coords = coords.view(1, 1, W, H, D, 4, 1).repeat(B, N, 1, 1, 1, 1, 1)
         img2lidars = img2lidars.view(B, N, 1, 1, 1, 4, 4).repeat(1, 1, W, H, D, 1, 1)
+        # transform the camera frustum coordinates to 3D coordinates and normalize
         coords3d = torch.matmul(img2lidars, coords).squeeze(-1)[..., :3]
         coords3d[..., 0:1] = (coords3d[..., 0:1] - self.position_range[0]) / (self.position_range[3] - self.position_range[0])
         coords3d[..., 1:2] = (coords3d[..., 1:2] - self.position_range[1]) / (self.position_range[4] - self.position_range[1])
